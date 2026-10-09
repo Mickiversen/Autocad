@@ -29,6 +29,16 @@ pub fn io() -> Option<&'static IoHooks> {
     IO.get()
 }
 
+/// Receives the bytes of a saved drawing on targets without a file system (the browser turns
+/// them into a download). Called with the file name and the encoded drawing.
+pub type SaveSink = fn(&str, &[u8]);
+
+static SINK: OnceLock<SaveSink> = OnceLock::new();
+
+pub fn set_save_sink(f: SaveSink) {
+    let _ = SINK.set(f);
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("new", "New Drawing...", run_new)
@@ -120,6 +130,11 @@ pub(crate) fn save_to(s: &mut Session, path: &str) -> Result<usize> {
         let tmp = format!("{path}.cadcraft-tmp");
         std::fs::write(&tmp, &bytes).map_err(|e| bad("save", format!("{path}: {e}")))?;
         std::fs::rename(&tmp, path).map_err(|e| bad("save", format!("{path}: {e}")))?;
+    }
+    #[cfg(target_arch = "wasm32")]
+    match SINK.get() {
+        Some(sink) => sink(&file_name(path), &bytes),
+        None => return Err(bad("save", "saving is not available in this build")),
     }
     let st = s.state_mut()?;
     st.saved = st.doc.clone();
