@@ -72,6 +72,18 @@ mod web {
         }
     }
 
+    /// Ask for the file name to save under; `.dwg` writes DWG, anything else DXF. `None` = cancelled.
+    fn ask_save_name(suggested: &str) -> Option<String> {
+        let window = web_sys::window()?;
+        let answer = window.prompt_with_message_and_default("Save as (end the name with .dxf or .dwg):", suggested).ok().flatten()?;
+        let name = answer.trim().replace(['/', '\\'], "_");
+        if name.is_empty() {
+            return None;
+        }
+        let lower = name.to_ascii_lowercase();
+        Some(if lower.ends_with(".dxf") || lower.ends_with(".dwg") { name } else { format!("{name}.dxf") })
+    }
+
     /// Show the browser's file dialog; chosen files are queued in `INCOMING`.
     fn pick_file() {
         let Some(document) = web_sys::window().and_then(|w| w.document()) else { return };
@@ -137,8 +149,9 @@ mod web {
                                 pick_file();
                                 None
                             })),
-                            // The browser has no save dialog: the file name is kept and the drawing downloads.
-                            pick_save: Some(Box::new(|name: &str| Some(name.to_string()))),
+                            // The browser has no save dialog: ask for a name (the extension picks DXF or DWG)
+                            // and the drawing downloads.
+                            pick_save: Some(Box::new(ask_save_name)),
                         };
                         let mut app = CadApp::new(Session::new(), services);
                         if let Some(rs) = &cc.wgpu_render_state {
